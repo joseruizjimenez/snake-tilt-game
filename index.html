@@ -5,485 +5,115 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
 <title>Snake Tilt — Captura manzanas</title>
 <style>
-  html,body{
-    height:100%;
-    margin:0;
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
-    background: linear-gradient(180deg,#0b3d91 0%, #071a3b 100%);
-    color:#fff;
-    -webkit-user-select:none; user-select:none;
-    touch-action: none;
-  }
-  #gameWrap{
-    display:flex;
-    flex-direction:column;
-    height:100%;
-    align-items:center;
-    justify-content:center;
-    gap:8px;
-    padding:12px;
-    box-sizing:border-box;
-  }
-  canvas{
-    background: #0f2238;
-    border-radius:12px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.6), inset 0 2px 8px rgba(255,255,255,0.02);
-    max-width:100%;
-    width: 720px; /* desktop default, scaled on mobile by viewport */
-    height:540px;
-    touch-action: none;
-  }
-  .hud{
-    width:100%;
-    max-width:720px;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:8px;
-  }
-  .btn{
-    background: rgba(255,255,255,0.06);
-    padding:8px 12px;
-    border-radius:8px;
-    border:1px solid rgba(255,255,255,0.04);
-    color:#fff;
-    font-weight:600;
-    display:inline-flex;
-    gap:8px;
-    align-items:center;
-  }
-  .center{
-    text-align:center;
-    color:#e6f0ff;
-  }
-  #overlay{
-    position:absolute;
-    left:0; right:0; top:0; bottom:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    pointer-events:none;
-  }
-  .panel{
-    background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.65));
-    border-radius:14px;
-    padding:18px;
-    box-shadow:0 10px 40px rgba(0,0,0,0.6);
-    color:#fff;
-    max-width:90%;
-    text-align:center;
-    pointer-events:auto;
-  }
-  small { opacity:0.8; display:block; margin-top:6px; }
-  footer { font-size:12px; opacity:0.7; margin-top:6px; }
+  body{margin:0;background:#071a3b;color:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
+  canvas{display:block;margin:0 auto;background:#0f2238;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+  #hud{position:fixed;top:8px;left:0;right:0;display:flex;justify-content:space-around;font-size:18px}
+  #overlay{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .panel{background:rgba(0,0,0,.7);padding:20px;border-radius:10px;text-align:center;pointer-events:auto}
 </style>
 </head>
 <body>
-<div id="gameWrap">
-  <div class="hud">
-    <div class="btn" id="btnPermission">Activar sensores</div>
-    <div style="flex:1"></div>
-    <div class="btn" id="btnPause">Pausa</div>
-    <div class="btn" id="btnRestart">Reiniciar</div>
-  </div>
-
-  <canvas id="canvas" width="720" height="540" aria-label="Juego de serpiente tiltable"></canvas>
-
-  <div class="hud" style="justify-content:space-between; max-width:720px;">
-    <div>Score: <span id="score">0</span></div>
-    <div>Velocidad: <span id="speed">3</span></div>
-    <div>Manzanas: <span id="apples">0</span></div>
-  </div>
-
-  <div class="center" style="max-width:720px;">
-    <p>Inclina tu teléfono para mover la serpiente y captura manzanas. Evita chocar contigo mismo o contra los bordes.</p>
-    <small>Si usas iOS Safari, pulsa "Activar sensores" y concede permiso.</small>
-    <footer>Hecho con ❤️ — Snake Tilt</footer>
-  </div>
+<div id="hud">
+  <div>Score: <span id="score">0</span></div>
+  <div>Record: <span id="record">0</span></div>
+  <div>Manzanas: <span id="apples">0</span></div>
 </div>
-
+<canvas id="canvas" width="720" height="540"></canvas>
 <div id="overlay"></div>
 
 <script>
-/* -------------------------
-   Snake Tilt — Juego
-   - movimiento con inclinación del dispositivo
-   - captura manzanas (apples)
-   - colisiones y crecimiento
-   ------------------------- */
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const scoreEl=document.getElementById("score");
+const applesEl=document.getElementById("apples");
+const recordEl=document.getElementById("record");
+const overlay=document.getElementById("overlay");
 
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d', { alpha: false });
-const scoreEl = document.getElementById('score');
-const speedEl = document.getElementById('speed');
-const applesEl = document.getElementById('apples');
-const overlay = document.getElementById('overlay');
+let W=canvas.width,H=canvas.height;
+let snake=[],snakeLen=6,vel={x:0,y:0},speed=2;
+let apple=null;
+let tilt={gamma:0,beta:0};
+let paused=false,score=0,apples=0;
+let record=localStorage.getItem("snakeTiltRecord")||0;
+recordEl.textContent=record;
 
-let width = canvas.width;
-let height = canvas.height;
-let paused = false;
-let score = 0;
-let applesEaten = 0;
-let baseSpeed = 3; // editable
-speedEl.textContent = baseSpeed;
-
-// Tweak grid size: this affects snake segment size and movement smoothness.
-const GRID = 18;
-const SEG_SIZE = GRID; // size of each snake segment in pixels
-
-// Game state
-let snake = [];
-let direction = { x: 1, y: 0 }; // normalized velocity vector (not exactly grid-based here)
-let vel = { x: 0, y: 0 };
-let snakeLengthTarget = 6; // initial length
-let apple = null;
-
-// For smooth tilt-based control we'll read 'beta' (front-back) and 'gamma' (left-right).
-let tilt = { gamma: 0, beta: 0 }; // degrees
-
-// iOS permission handling
-const btnPermission = document.getElementById('btnPermission');
-btnPermission.addEventListener('click', async () => {
-  // On iOS Safari, need DeviceOrientationEvent.requestPermission()
-  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const resp = await DeviceOrientationEvent.requestPermission();
-      if (resp === 'granted') {
-        startOrientation();
-        btnPermission.textContent = 'Sensores activados';
-        btnPermission.disabled = true;
-      } else {
-        alert('Permiso denegado. No se podrá controlar con inclinación.');
-      }
-    } catch (err) {
-      alert('Error al solicitar permiso: ' + err);
-    }
-  } else {
-    // otros navegadores generalmente ya permiten leer evento tras gesto
-    startOrientation();
-    btnPermission.textContent = 'Sensores activados';
-    btnPermission.disabled = true;
-  }
-});
-
-function startOrientation(){
-  window.addEventListener('deviceorientation', onTilt);
+// --- Sensores
+if(typeof DeviceOrientationEvent!=="undefined" && typeof DeviceOrientationEvent.requestPermission==="function"){
+  // iOS
+  DeviceOrientationEvent.requestPermission().then(res=>{
+    if(res==="granted")window.addEventListener("deviceorientation",onTilt);
+  }).catch(console.warn);
+}else{
+  window.addEventListener("deviceorientation",onTilt);
 }
+function onTilt(e){tilt.gamma=e.gamma||0;tilt.beta=e.beta||0;}
 
-// Also provide a fallback: allow pointer dragging to simulate tilt (desktop debugging)
-let pointerFallback = false;
-canvas.addEventListener('pointerdown', e => {
-  pointerFallback = true;
-});
-canvas.addEventListener('pointermove', e => {
-  if (!pointerFallback) return;
-  const rect = canvas.getBoundingClientRect();
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const dx = e.clientX - cx;
-  const dy = e.clientY - cy;
-  // map to tilt degrees roughly
-  tilt.gamma = (dx / (rect.width/2)) * 45;
-  tilt.beta  = -(dy / (rect.height/2)) * 45;
-});
-canvas.addEventListener('pointerup', () => { pointerFallback = false; });
-
-function onTilt(e){
-  // e.gamma: left-to-right tilt, -90..90
-  // e.beta: front-to-back tilt, -180..180
-  tilt.gamma = e.gamma || 0;
-  tilt.beta = e.beta || 0;
-}
-
-// Resize handling (keeps canvas internal resolution stable but scales on CSS if needed)
-function resizeCanvas(){
-  // keep constant logical resolution (720x540) but scale CSS to fit width
-  const maxWidth = Math.min(window.innerWidth - 24, 720);
-  const aspect = canvas.height / canvas.width;
-  canvas.style.width = `${maxWidth}px`;
-  canvas.style.height = `${Math.round(maxWidth * aspect)}px`;
-}
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-
-/* ------------------------
-   Helper utilities
-   ------------------------ */
-function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
-function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-function distance(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.sqrt(dx*dx+dy*dy); }
-
-/* ------------------------
-   Game initialization
-   ------------------------ */
+// --- Juego
 function resetGame(){
-  score = 0;
-  applesEaten = 0;
-  snakeLengthTarget = 6;
-  snake = [];
-  // start snake at center with few segments trailing
-  const sx = width/2;
-  const sy = height/2;
-  for(let i=0;i<snakeLengthTarget;i++){
-    snake.push({ x: sx - i*SEG_SIZE, y: sy });
+  snake=[];snakeLen=6;score=0;apples=0;speed=2;
+  for(let i=0;i<snakeLen;i++){
+    snake.push({x:W/2-i*10,y:H/2});
   }
-  vel = { x: baseSpeed, y: 0 };
+  vel={x:speed,y:0};
   spawnApple();
-  paused = false;
-  scoreEl.textContent = score;
-  applesEl.textContent = applesEaten;
-  speedEl.textContent = baseSpeed;
-  overlay.innerHTML = '';
+  scoreEl.textContent=0;applesEl.textContent=0;
+  overlay.innerHTML="";
+  paused=false;
 }
-
 function spawnApple(){
-  // spawn apple on grid, avoid snake
-  const cols = Math.floor(width / SEG_SIZE);
-  const rows = Math.floor(height / SEG_SIZE);
-  let tries = 0;
-  while(true){
-    tries++;
-    const gx = randInt(0, cols-1);
-    const gy = randInt(0, rows-1);
-    const ax = gx * SEG_SIZE + SEG_SIZE/2;
-    const ay = gy * SEG_SIZE + SEG_SIZE/2;
-    let collide = snake.some(s => distance({x:ax,y:ay}, s) < SEG_SIZE*0.9);
-    if (!collide || tries > 200) {
-      apple = { x: ax, y: ay, r: SEG_SIZE*0.45 };
-      break;
-    }
-  }
+  apple={x:20+Math.random()*(W-40),y:20+Math.random()*(H-40),r:10};
 }
+function update(){
+  if(paused)return;
+  // suavizado de giros
+  let gx=Math.max(-1,Math.min(1,tilt.gamma/40));
+  let gy=Math.max(-1,Math.min(1,tilt.beta/40));
+  vel.x=vel.x*0.9+gx*speed*0.1;
+  vel.y=vel.y*0.9+gy*speed*0.1;
 
-/* ------------------------
-   Game update & drawing
-   ------------------------ */
-
-let lastTime = 0;
-const MAX_DT = 40; // ms
-
-function update(dt){
-  if (paused) return;
-
-  // Map tilt to target velocity:
-  // tilt.gamma -> left/right, tilt.beta -> forward/back.
-  // Normalize degrees to -1..1
-  const gx = clamp(tilt.gamma / 45, -1, 1); // left-right
-  const gy = clamp(tilt.beta  / 45, -1, 1); // front-back
-  // Apply a small smoothing
-  const targetSpeed = baseSpeed + (score * 0.05); // speed up slowly with score
-  const sensitivity = 0.9; // how strongly tilt controls direction
-  // aimDirection vector in screen coordinates: x = gx, y = gy
-  const mag = Math.sqrt(gx*gx + gy*gy) || 1;
-  const dirx = (gx / mag) * sensitivity;
-  const diry = (gy / mag) * sensitivity;
-  // Update velocity by blending current vel towards direction*targetSpeed
-  vel.x = vel.x * 0.92 + dirx * targetSpeed * 0.08;
-  vel.y = vel.y * 0.92 + diry * targetSpeed * 0.08;
-
-  // if tilt small, keep last direction (so snake keeps moving)
-  if (Math.abs(gx) < 0.03 && Math.abs(gy) < 0.03 && snake.length>1) {
-    // no strong tilt - small damping
-    vel.x *= 0.995;
-    vel.y *= 0.995;
-  }
-
-  // Move snake head
-  const head = { x: snake[0].x + vel.x, y: snake[0].y + vel.y };
+  let head={x:snake[0].x+vel.x,y:snake[0].y+vel.y};
   snake.unshift(head);
+  while(snake.length>snakeLen)snake.pop();
 
-  // Trim tail to current target length (by position)
-  while (snake.length > snakeLengthTarget) snake.pop();
-
-  // Collisions: walls
-  if (head.x < 0 || head.y < 0 || head.x > width || head.y > height) {
-    gameOver('Chocaste contra el borde');
-    return;
+  // colisión bordes (con margen)
+  if(head.x<5||head.y<5||head.x>W-5||head.y>H-5){
+    return gameOver();
   }
-
-  // Self-collision: check head against body (skip first few segments to avoid false positive)
-  for (let i = 4; i < snake.length; i++) {
-    if (distance(head, snake[i]) < SEG_SIZE*0.75) {
-      gameOver('Te comiste a ti mismo');
-      return;
-    }
+  // colisión con el cuerpo (solo si la serpiente es larga)
+  for(let i=6;i<snake.length;i++){
+    let dx=head.x-snake[i].x,dy=head.y-snake[i].y;
+    if(dx*dx+dy*dy<80)return gameOver();
   }
-
-  // Apple collision
-  if (apple && distance(head, apple) < SEG_SIZE*0.9 + apple.r) {
-    applesEaten++;
-    score += 10;
-    snakeLengthTarget += 2; // grow
+  // comer manzana
+  let dx=head.x-apple.x,dy=head.y-apple.y;
+  if(dx*dx+dy*dy<15*15){
+    apples++;score+=10;snakeLen+=2;speed+=0.1;
+    applesEl.textContent=apples;scoreEl.textContent=score;
+    if(score>record){record=score;recordEl.textContent=record;localStorage.setItem("snakeTiltRecord",record);}
     spawnApple();
-    applesEl.textContent = applesEaten;
-    scoreEl.textContent = score;
-    // small effect: boost speed a bit
-    baseSpeed = clamp(baseSpeed + 0.08, 2, 12);
-    speedEl.textContent = Math.round(baseSpeed*10)/10;
   }
 }
-
 function draw(){
-  // Clear
-  ctx.clearRect(0,0,width,height);
-
-  // Background grid (subtle)
-  ctx.save();
-  ctx.globalAlpha = 0.06;
-  ctx.fillStyle = '#ffffff';
-  for (let x=0;x<width;x+=SEG_SIZE){
-    ctx.fillRect(x, 0, 1, height);
+  ctx.clearRect(0,0,W,H);
+  // manzana
+  ctx.fillStyle="red";
+  ctx.beginPath();ctx.arc(apple.x,apple.y,apple.r,0,Math.PI*2);ctx.fill();
+  // serpiente
+  for(let i=0;i<snake.length;i++){
+    ctx.fillStyle=i===0?"#2e7d32":"#4caf50";
+    ctx.beginPath();ctx.arc(snake[i].x,snake[i].y,8,0,Math.PI*2);ctx.fill();
   }
-  for (let y=0;y<height;y+=SEG_SIZE){
-    ctx.fillRect(0, y, width, 1);
-  }
-  ctx.restore();
-
-  // Draw apple
-  if (apple){
-    // shadow
-    ctx.beginPath();
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.ellipse(apple.x+4, apple.y+6, apple.r*1.05, apple.r*0.6, 0, 0, Math.PI*2);
-    ctx.fill();
-
-    // apple body
-    ctx.beginPath();
-    ctx.fillStyle = '#e53935';
-    ctx.arc(apple.x, apple.y, apple.r, 0, Math.PI*2);
-    ctx.fill();
-
-    // shine
-    ctx.beginPath();
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.ellipse(apple.x - apple.r*0.3, apple.y - apple.r*0.45, apple.r*0.35, apple.r*0.22, -0.4, 0, Math.PI*2);
-    ctx.fill();
-
-    // stem
-    ctx.beginPath();
-    ctx.strokeStyle = '#5d4037';
-    ctx.lineWidth = 3;
-    ctx.moveTo(apple.x, apple.y - apple.r*0.85);
-    ctx.lineTo(apple.x + 4, apple.y - apple.r*1.35);
-    ctx.stroke();
-
-    // leaf
-    ctx.beginPath();
-    ctx.fillStyle = '#2e7d32';
-    ctx.ellipse(apple.x + apple.r*0.33, apple.y - apple.r*1.05, apple.r*0.3, apple.r*0.15, -0.6, 0, Math.PI*2);
-    ctx.fill();
-  }
-
-  // Draw snake: head highlighted
-  for (let i = snake.length - 1; i >= 0; i--) {
-    const s = snake[i];
-    const t = i / Math.max(1, snake.length - 1);
-    const size = SEG_SIZE * (0.85 + 0.2 * (1 - t));
-    // color gradient from head (lighter) to tail (darker)
-    const r = Math.round(40 + 160 * (1 - t));
-    const g = Math.round(200 - 120 * (1 - t));
-    const b = Math.round(120 - 60 * (1 - t));
-    ctx.beginPath();
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
-    ctx.ellipse(s.x, s.y, size/2, size/2, 0, 0, Math.PI*2);
-    ctx.fill();
-
-    // eye on head
-    if (i === 0){
-      ctx.beginPath();
-      ctx.fillStyle = '#000';
-      // calculate eye offset based on current vel direction
-      const ang = Math.atan2(vel.y || 0.001, vel.x || 0.001);
-      const ex = Math.cos(ang) * size*0.22;
-      const ey = Math.sin(ang) * size*0.22;
-      ctx.ellipse(s.x + ex, s.y + ey, size*0.12, size*0.12, 0, 0, Math.PI*2);
-      ctx.fill();
-    }
-  }
-
-  // HUD overlay: small tilt indicator
-  ctx.save();
-  ctx.globalAlpha = 0.9;
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  ctx.fillRect(8, 8, 180, 46);
-  ctx.fillStyle = '#fff';
-  ctx.font = '12px system-ui, -apple-system, Roboto, Arial';
-  ctx.fillText(`Tilt γ: ${tilt.gamma.toFixed(1)}°`, 16, 26);
-  ctx.fillText(`Tilt β: ${tilt.beta.toFixed(1)}°`, 16, 42);
-  ctx.restore();
+}
+function loop(){
+  update();draw();requestAnimationFrame(loop);
+}
+function gameOver(){
+  paused=true;
+  overlay.innerHTML=`<div class="panel"><h2>Game Over</h2><p>Puntos: ${score}</p><button onclick="resetGame()">Reintentar</button></div>`;
 }
 
-/* ------------------------
-   Main loop
-   ------------------------ */
-function loop(ts){
-  if (!lastTime) lastTime = ts;
-  let dt = ts - lastTime;
-  if (dt > MAX_DT) dt = MAX_DT;
-  lastTime = ts;
-
-  update(dt);
-  draw();
-
-  requestAnimationFrame(loop);
-}
-
-/* ------------------------
-   Game over handling
-   ------------------------ */
-function gameOver(reason){
-  paused = true;
-  // show overlay panel
-  overlay.innerHTML = '';
-  const panel = document.createElement('div');
-  panel.className = 'panel';
-  panel.innerHTML = `<h2>Game Over</h2>
-    <p>${reason}</p>
-    <p>Puntuación: <strong>${score}</strong><br/>Manzanas: <strong>${applesEaten}</strong></p>
-    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
-      <button id="retry" class="btn">Reintentar</button>
-      <button id="share" class="btn">Compartir</button>
-    </div>`;
-  overlay.appendChild(panel);
-
-  document.getElementById('retry').addEventListener('click', () => {
-    overlay.innerHTML = '';
-    resetGame();
-  });
-  document.getElementById('share').addEventListener('click', () => {
-    // Web Share API if available
-    if (navigator.share) {
-      navigator.share({
-        title: 'Snake Tilt',
-        text: `He conseguido ${score} puntos y ${applesEaten} manzanas en Snake Tilt! ¿Puedes superarme?`
-      }).catch(()=>{});
-    } else {
-      navigator.clipboard?.writeText(`Mi puntuación en Snake Tilt: ${score} puntos, ${applesEaten} manzanas`) 
-        .then(()=> alert('Puntuación copiada al portapapeles'))
-        .catch(()=> alert('No se pudo compartir'));
-    }
-  });
-}
-
-/* ------------------------
-   Buttons: pause / restart
-   ------------------------ */
-document.getElementById('btnPause').addEventListener('click', ()=>{
-  paused = !paused;
-  document.getElementById('btnPause').textContent = paused ? 'Reanudar' : 'Pausa';
-  if (!paused) lastTime = performance.now(); // prevent big dt
-});
-document.getElementById('btnRestart').addEventListener('click', ()=>{
-  resetGame();
-});
-
-/* Prevent page from scrolling while playing */
-document.addEventListener('touchmove', function(e){ e.preventDefault(); }, { passive: false });
-
-/* Start */
 resetGame();
-requestAnimationFrame(loop);
-
+loop();
 </script>
 </body>
 </html>
