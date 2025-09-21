@@ -6,7 +6,7 @@
 <title>Snake Tilt — Captura manzanas</title>
 <style>
   body{margin:0;background:#071a3b;color:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
-  canvas{display:block;margin:0 auto;background:#0f2238;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+  canvas{display:block;margin:40px auto;background:#0f2238;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
   #hud{position:fixed;top:8px;left:0;right:0;display:flex;justify-content:space-around;font-size:18px}
   #overlay{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
   .panel{background:rgba(0,0,0,.7);padding:20px;border-radius:10px;text-align:center;pointer-events:auto}
@@ -39,7 +39,6 @@ recordEl.textContent=record;
 
 // --- Sensores
 if(typeof DeviceOrientationEvent!=="undefined" && typeof DeviceOrientationEvent.requestPermission==="function"){
-  // iOS
   DeviceOrientationEvent.requestPermission().then(res=>{
     if(res==="granted")window.addEventListener("deviceorientation",onTilt);
   }).catch(console.warn);
@@ -51,10 +50,11 @@ function onTilt(e){tilt.gamma=e.gamma||0;tilt.beta=e.beta||0;}
 // --- Juego
 function resetGame(){
   snake=[];snakeLen=6;score=0;apples=0;speed=2;
+  // colocamos segmentos más separados
   for(let i=0;i<snakeLen;i++){
-    snake.push({x:W/2-i*10,y:H/2});
+    snake.push({x:W/2-i*15,y:H/2});
   }
-  vel={x:speed,y:0};
+  vel={x:0,y:0}; // arranca parado
   spawnApple();
   scoreEl.textContent=0;applesEl.textContent=0;
   overlay.innerHTML="";
@@ -65,9 +65,10 @@ function spawnApple(){
 }
 function update(){
   if(paused)return;
-  // suavizado de giros
-  let gx=Math.max(-1,Math.min(1,tilt.gamma/40));
-  let gy=Math.max(-1,Math.min(1,tilt.beta/40));
+
+  // suavizado + menor sensibilidad
+  let gx=Math.max(-1,Math.min(1,tilt.gamma/60));
+  let gy=Math.max(-1,Math.min(1,tilt.beta/60));
   vel.x=vel.x*0.9+gx*speed*0.1;
   vel.y=vel.y*0.9+gy*speed*0.1;
 
@@ -79,10 +80,10 @@ function update(){
   if(head.x<5||head.y<5||head.x>W-5||head.y>H-5){
     return gameOver();
   }
-  // colisión con el cuerpo (solo si la serpiente es larga)
-  for(let i=6;i<snake.length;i++){
+  // colisión con el cuerpo (ignora los primeros 10 segmentos)
+  for(let i=10;i<snake.length;i++){
     let dx=head.x-snake[i].x,dy=head.y-snake[i].y;
-    if(dx*dx+dy*dy<80)return gameOver();
+    if(dx*dx+dy*dy<70)return gameOver();
   }
   // comer manzana
   let dx=head.x-apple.x,dy=head.y-apple.y;
