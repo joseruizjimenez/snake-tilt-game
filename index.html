@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+<title>Snake Tilt — Captura manzanas</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b3d91"/>
+<style>
+  html,body{height:100%;margin:0;background:#071a3b;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  #gameWrap{display:flex;flex-direction:column;height:100%;align-items:center;justify-content:center;gap:8px;padding:12px;box-sizing:border-box}
+  canvas{background:#0f2238;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6);max-width:100%;width:720px;height:540px}
+  .hud{width:100%;max-width:720px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .btn{background:rgba(255,255,255,.06);padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.04);font-weight:600}
+  #overlay{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .panel{background:rgba(0,0,0,.65);border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.6);pointer-events:auto;text-align:center}
+  small{opacity:.8}
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <div class="hud">
+    <div class="btn" id="btnPermission">Activar sensores</div>
+    <div style="flex:1"></div>
+    <div class="btn" id="btnPause">Pausa</div>
+    <div class="btn" id="btnRestart">Reiniciar</div>
+  </div>
+  <canvas id="canvas" width="720" height="540"></canvas>
+  <div class="hud" style="justify-content:space-between; max-width:720px;">
+    <div>Score: <span id="score">0</span></div>
+    <div>Record: <span id="record">0</span></div>
+    <div>Manzanas: <span id="apples">0</span></div>
+  </div>
+</div>
+<div id="overlay"></div>
+
+<!-- Sonidos -->
+<audio id="sndEat" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
+<audio id="sndGameOver" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
+<audio id="sndGrow" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg" preload="auto"></audio>
+
+<script>
+const canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d",{alpha:false});
+const scoreEl=document.getElementById("score"),applesEl=document.getElementById("apples");
+const recordEl=document.getElementById("record"),overlay=document.getElementById("overlay");
+const sndEat=document.getElementById("sndEat"),sndGameOver=document.getElementById("sndGameOver"),sndGrow=document.getElementById("sndGrow");
+
+let width=canvas.width,height=canvas.height,paused=false,score=0,applesEaten=0;
+let baseSpeed=3,snake=[],vel={x:0,y:0},snakeLengthTarget=6,apple=null;
+let tilt={gamma:0,beta:0},lastTime=0;
+
+let record=localStorage.getItem("snakeTiltRecord")||0;
+recordEl.textContent=record;
+
+document.getElementById("btnPermission").onclick=async()=>{
+ if(typeof DeviceOrientationEvent!=="undefined"&&typeof DeviceOrientationEvent.requestPermission==="function"){
+   let resp=await DeviceOrientationEvent.requestPermission();
+   if(resp==="granted")window.addEventListener("deviceorientation",onTilt);
+ }else window.addEventListener("deviceorientation",onTilt);
+};
+function onTilt(e){tilt.gamma=e.gamma||0;tilt.beta=e.beta||0;}
+
+function resetGame(){
+  score=0;applesEaten=0;baseSpeed=3;snakeLengthTarget=6;
+  snake=[];for(let i=0;i<snakeLengthTarget;i++)snake.push({x:width/2-i*18,y:height/2});
+  vel={x:baseSpeed,y:0};spawnApple();paused=false;scoreEl.textContent=0;applesEl.textContent=0;
+  overlay.innerHTML="";
+}
+function randInt(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
+function distance(a,b){let dx=a.x-b.x,dy=a.y-b.y;return Math.sqrt(dx*dx+dy*dy);}
+function spawnApple(){apple={x:randInt(20,width-20),y:randInt(20,height-20),r:10};}
+
+function update(){
+ if(paused)return;
+ let gx=Math.max(-1,Math.min(1,tilt.gamma/45)),gy=Math.max(-1,Math.min(1,tilt.beta/45));
+ vel.x=vel.x*0.9+gx*baseSpeed*0.1;vel.y=vel.y*0.9+gy*baseSpeed*0.1;
+ let head={x:snake[0].x+vel.x,y:snake[0].y+vel.y};snake.unshift(head);
+ while(snake.length>snakeLengthTarget)snake.pop();
+ if(head.x<0||head.y<0||head.x>width||head.y>height) return gameOver();
+ for(let i=4;i<snake.length;i++)if(distance(head,snake[i])<10)return gameOver();
+ if(distance(head,apple)<16){applesEaten++;score+=10;snakeLengthTarget+=2;spawnApple();
+   applesEl.textContent=applesEaten;scoreEl.textContent=score;sndEat.play();sndGrow.play();
+   if(score>record){record=score;recordEl.textContent=record;localStorage.setItem("snakeTiltRecord",record);}
+ }
+}
+function draw(){
+ ctx.clearRect(0,0,width,height);
+ ctx.fillStyle="red";ctx.beginPath();ctx.arc(apple.x,apple.y,apple.r,0,Math.PI*2);ctx.fill();
+ for(let i=0;i<snake.length;i++){ctx.fillStyle=i? "#4caf50":"#2e7d32";
+   ctx.beginPath();ctx.arc(snake[i].x,snake[i].y,9,0,Math.PI*2);ctx.fill();}
+}
+function loop(ts){update();draw();requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+
+function gameOver(){
+ paused=true;sndGameOver.play();
+ overlay.innerHTML=`<div class="panel"><h2>Game Over</h2><p>Puntos: ${score}</p><p><button onclick="resetGame()">Reintentar</button></p></div>`;
+}
+
+document.getElementById("btnPause").onclick=()=>{paused=!paused};
+document.getElementById("btnRestart").onclick=()=>resetGame();
+resetGame();
+
+if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js');}
+</script>
+</body>
+</html>
