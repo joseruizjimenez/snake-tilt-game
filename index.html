@@ -1,119 +1,102 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
-<title>Snake Tilt — Captura manzanas</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Tilt</title>
 <style>
-  body{margin:0;background:#071a3b;color:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
-  canvas{display:block;margin:40px auto;background:#0f2238;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
-  #hud{position:fixed;top:8px;left:0;right:0;display:flex;justify-content:space-around;font-size:18px}
-  #overlay{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
-  .panel{background:rgba(0,0,0,.7);padding:20px;border-radius:10px;text-align:center;pointer-events:auto}
+  body { margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh; }
+  canvas { background:#111; }
 </style>
 </head>
 <body>
-<div id="hud">
-  <div>Score: <span id="score">0</span></div>
-  <div>Record: <span id="record">0</span></div>
-  <div>Manzanas: <span id="apples">0</span></div>
-</div>
-<canvas id="canvas" width="720" height="540"></canvas>
-<div id="overlay"></div>
-
+<canvas id="game" width="400" height="400"></canvas>
 <script>
-const canvas=document.getElementById("canvas");
+const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
-const scoreEl=document.getElementById("score");
-const applesEl=document.getElementById("apples");
-const recordEl=document.getElementById("record");
-const overlay=document.getElementById("overlay");
 
-let W=canvas.width,H=canvas.height;
-let snake=[],snakeLen=6,vel={x:0,y:0},speed=2;
-let apple=null;
+let grid=20;
+let snake=[];
+let snakeLength=5;
+let apple={x:200,y:200};
+let dx=0,dy=0;
 let tilt={gamma:0,beta:0};
-let paused=false,score=0,apples=0;
-let record=localStorage.getItem("snakeTiltRecord")||0;
-recordEl.textContent=record;
 
-// --- Sensores
-if(typeof DeviceOrientationEvent!=="undefined" && typeof DeviceOrientationEvent.requestPermission==="function"){
-  DeviceOrientationEvent.requestPermission().then(res=>{
-    if(res==="granted")window.addEventListener("deviceorientation",onTilt);
-  }).catch(console.warn);
-}else{
-  window.addEventListener("deviceorientation",onTilt);
-}
-function onTilt(e){tilt.gamma=e.gamma||0;tilt.beta=e.beta||0;}
-
-// --- Juego
-function resetGame(){
-  snake=[];snakeLen=6;score=0;apples=0;speed=2;
-  // colocamos segmentos más separados
-  for(let i=0;i<snakeLen;i++){
-    snake.push({x:W/2-i*15,y:H/2});
+// --- Inicializar serpiente en línea horizontal ---
+function initSnake(){
+  snake=[];
+  for(let i=0;i<snakeLength;i++){
+    snake.push({x:100 - i*grid, y:100}); 
   }
-  vel={x:0,y:0}; // arranca parado
-  spawnApple();
-  scoreEl.textContent=0;applesEl.textContent=0;
-  overlay.innerHTML="";
-  paused=false;
 }
-function spawnApple(){
-  apple={x:20+Math.random()*(W-40),y:20+Math.random()*(H-40),r:10};
-}
+initSnake();
+
+// --- Eventos sensores ---
+window.addEventListener("deviceorientation",e=>{
+  tilt.gamma=e.gamma; // izquierda/derecha
+  tilt.beta=e.beta;   // adelante/atrás
+});
+
+// --- Juego ---
 function update(){
-  if(paused)return;
+  // convertir inclinación en dirección
+  if(Math.abs(tilt.gamma)>10){
+    dx=tilt.gamma>0?grid:-grid;
+    dy=0;
+  }
+  if(Math.abs(tilt.beta)>10){
+    dy=tilt.beta>0?grid:-grid;
+    dx=0;
+  }
 
-  // suavizado + menor sensibilidad
-  let gx=Math.max(-1,Math.min(1,tilt.gamma/60));
-  let gy=Math.max(-1,Math.min(1,tilt.beta/60));
-  vel.x=vel.x*0.9+gx*speed*0.1;
-  vel.y=vel.y*0.9+gy*speed*0.1;
-
-  let head={x:snake[0].x+vel.x,y:snake[0].y+vel.y};
+  let head={x:snake[0].x+dx,y:snake[0].y+dy};
   snake.unshift(head);
-  while(snake.length>snakeLen)snake.pop();
+  while(snake.length>snakeLength) snake.pop();
 
-  // colisión bordes (con margen)
-  if(head.x<5||head.y<5||head.x>W-5||head.y>H-5){
-    return gameOver();
+  // colisión con bordes
+  if(head.x<0||head.x>=canvas.width||head.y<0||head.y>=canvas.height){
+    resetGame();
   }
-  // colisión con el cuerpo (ignora los primeros 10 segmentos)
-  for(let i=10;i<snake.length;i++){
-    let dx=head.x-snake[i].x,dy=head.y-snake[i].y;
-    if(dx*dx+dy*dy<70)return gameOver();
+
+  // colisión con cuerpo (ignorar cabeza = i=0)
+  for(let i=1;i<snake.length;i++){
+    if(snake[i].x===head.x && snake[i].y===head.y){
+      resetGame();
+    }
   }
+
   // comer manzana
-  let dx=head.x-apple.x,dy=head.y-apple.y;
-  if(dx*dx+dy*dy<15*15){
-    apples++;score+=10;snakeLen+=2;speed+=0.1;
-    applesEl.textContent=apples;scoreEl.textContent=score;
-    if(score>record){record=score;recordEl.textContent=record;localStorage.setItem("snakeTiltRecord",record);}
-    spawnApple();
+  if(head.x===apple.x && head.y===apple.y){
+    snakeLength++;
+    apple.x=Math.floor(Math.random()*canvas.width/grid)*grid;
+    apple.y=Math.floor(Math.random()*canvas.height/grid)*grid;
   }
-}
-function draw(){
-  ctx.clearRect(0,0,W,H);
-  // manzana
-  ctx.fillStyle="red";
-  ctx.beginPath();ctx.arc(apple.x,apple.y,apple.r,0,Math.PI*2);ctx.fill();
-  // serpiente
-  for(let i=0;i<snake.length;i++){
-    ctx.fillStyle=i===0?"#2e7d32":"#4caf50";
-    ctx.beginPath();ctx.arc(snake[i].x,snake[i].y,8,0,Math.PI*2);ctx.fill();
-  }
-}
-function loop(){
-  update();draw();requestAnimationFrame(loop);
-}
-function gameOver(){
-  paused=true;
-  overlay.innerHTML=`<div class="panel"><h2>Game Over</h2><p>Puntos: ${score}</p><button onclick="resetGame()">Reintentar</button></div>`;
 }
 
-resetGame();
+function draw(){
+  ctx.fillStyle="#111";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.fillStyle="lime";
+  snake.forEach((s,i)=>ctx.fillRect(s.x,s.y,grid-2,grid-2));
+
+  ctx.fillStyle="red";
+  ctx.fillRect(apple.x,apple.y,grid-2,grid-2);
+}
+
+function loop(){
+  update();
+  draw();
+  setTimeout(loop,120);
+}
+
+function resetGame(){
+  dx=dy=0;
+  snakeLength=5;
+  initSnake();
+  apple={x:200,y:200};
+}
+
 loop();
 </script>
 </body>
